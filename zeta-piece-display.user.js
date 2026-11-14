@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.2.3
+// @version      0.2.4
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_2_3';
+  const GUARD = '__zetaPieceDisplay_0_2_4';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -391,14 +391,6 @@
     valueNode.style.letterSpacing = prefs.spacing + 'px';
     valueNode.style.color = prefs.color;
     fitBalanceText();
-    if (settingsPanel) {
-      const preview = settingsPanel.querySelector('#zp-font-preview');
-      if (preview) {
-        preview.style.fontFamily = FONT_STACKS[prefs.font];
-        preview.style.fontSize = prefs.fontSize + 'px';
-        preview.style.letterSpacing = prefs.spacing + 'px';
-      }
-    }
   }
 
   function closeSettings() {
@@ -451,7 +443,6 @@
         <option value="dohyeon">도현</option>
         <option value="serif">노토 세리프 KR</option>
         <option value="gowunb">고운바탕</option></select></div>
-      <div class="zp-row" style="justify-content:flex-end"><span class="zp-hint" id="zp-font-preview">미리보기: 1,000</span></div>
       <div class="zp-row"><label for="zp-size">글씨 크기</label><input id="zp-size" type="range" data-pref="fontSize" min="10" max="24" step="1"><span class="zp-value" data-output="fontSize"></span></div>
       <div class="zp-row"><label for="zp-spacing">자간</label><input id="zp-spacing" type="range" data-pref="spacing" min="-2" max="3" step="0.1"><span class="zp-value" data-output="spacing"></span></div>
       <div class="zp-row"><label for="zp-color">글씨 색상</label><input id="zp-color" type="text" maxlength="7" placeholder="#FFFFFF" data-pref="color" autocapitalize="characters" spellcheck="false"></div>
@@ -485,12 +476,6 @@
     document.body.appendChild(panel);
     settingsPanel = panel;
     syncSettings();
-    const preview = panel.querySelector('#zp-font-preview');
-    if (preview) {
-      preview.style.fontFamily = FONT_STACKS[prefs.font];
-      preview.style.fontSize = prefs.fontSize + 'px';
-      preview.style.letterSpacing = prefs.spacing + 'px';
-    }
     const rect = widget.getBoundingClientRect();
     const pw = panel.offsetWidth, ph = panel.offsetHeight;
     panel.style.left = Math.round(Math.max(10, Math.min(window.innerWidth-pw-10, rect.right-pw))) + 'px';
