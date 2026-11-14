@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.7
+// @version      0.1.8
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_7';
+  const GUARD = '__zetaPieceDisplay_0_1_8';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -263,35 +263,25 @@
     }
   }
 
-  // Search only while first placing or after a genuine viewport size change.
-  // Use the real model button's rectangle, never a page-width fallback.
+  // The model selector is an image button; textContent is empty.
+  // Use Zeta's stable test id, and verify that it belongs to this chat header.
   function findModelButton() {
-    if (modelButton && modelButton.isConnected && modelButton.getClientRects().length) {
-      return modelButton;
-    }
-    modelButton = null;
-    const nodes = document.querySelectorAll('button,[role="button"]');
-    let best = null;
-    let score = -1;
-    for (let i = 0; i < nodes.length; i++) {
-      const node = nodes[i];
-      if (widget?.contains(node)) continue;
-      const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
-      if (!/^zeta(?:\s|$)/i.test(text) || text.length > 24) continue;
-      const r = node.getBoundingClientRect();
-      if (r.width < 35 || r.height < 20 || r.top < 0 || r.top > 180 ||
-          r.left < 0 || r.right > innerWidth + 4) continue;
-      const rank = (node.closest('header,[role="banner"]') ? 10 : 0) +
-                   (text.toLowerCase() === 'zeta' ? 3 : 0) +
-                   (r.top < 130 ? 2 : 0);
-      if (rank > score) {best = node; score = rank;}
-    }
-    modelButton = best;
-    return best;
+    const header = document.querySelector('header[data-sentry-component="Header"]')
+      || document.querySelector('header:has([data-testid="chat-header-model"])');
+    const button = header?.querySelector('button[data-testid="chat-header-model"]')
+      || document.querySelector('button[data-testid="chat-header-model"]');
+    if (!header || !button || !header.contains(button)) return null;
+    const hr = header.getBoundingClientRect();
+    const br = button.getBoundingClientRect();
+    if (hr.width < 120 || hr.height < 25 || br.width < 30 || br.height < 20
+      || br.left < hr.left || br.right > hr.right + 2
+      || br.top < hr.top - 2 || br.bottom > hr.bottom + 2) return null;
+    modelButton = button;
+    return button;
   }
 
-  // Measure ONCE, then keep fixed right/top coordinates. A changing number,
-  // periodic balance request, scroll or input focus never repositions this.
+  // Measure the genuine button once. Right anchoring preserves a 12px gap
+  // even when the balance grows from three digits to four or more.
   function positionWidget(force = false) {
     if (!document.body) return;
     if (!isRoom()) {
@@ -301,19 +291,18 @@
     ensureWidget();
     if (!widget) return;
     if (placementReady && !force) {
-      if (widget.style.display !== 'flex') widget.style.display = 'flex';
+      widget.style.display = 'flex';
       return;
     }
-    const model = findModelButton();
-    if (!model) {
-      // No guessed position: wait until the actual model button exists.
+    const button = findModelButton();
+    if (!button) {
       widget.style.display = 'none';
       return;
     }
-    const r = model.getBoundingClientRect();
+    const r = button.getBoundingClientRect();
     const gap = 12;
-    // Fixed right edge means longer balances expand LEFT, keeping the gap.
-    widget.style.right = `${Math.round(innerWidth - r.left + gap)}px`;
+    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
+    widget.style.right = `${Math.round(viewportWidth - r.left + gap)}px`;
     widget.style.top = `${Math.round(r.top + r.height / 2)}px`;
     widget.style.display = 'flex';
     placementReady = true;
@@ -335,10 +324,9 @@
       widget.style.display = 'flex';
     }
     if (uiTimer) clearTimeout(uiTimer);
-    // No DOM observer and no repeated position calculation after placement.
     if (!placementReady && isRoom()) attachAttempts++;
     uiTimer = setTimeout(watchUi, !placementReady && isRoom() ?
-      (attachAttempts < 12 ? 1000 : 4000) : 5000);
+      (attachAttempts < 15 ? 600 : 3000) : 5000);
   }
 
   function onResize() {
