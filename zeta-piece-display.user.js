@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.2.2
+// @version      0.2.3
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_2_2';
+  const GUARD = '__zetaPieceDisplay_0_2_3';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -40,6 +40,8 @@
   // Only load the font the user selects; keep the original system font as default.
   const FONT_STACKS = {
     system: '-apple-system,BlinkMacSystemFont,system-ui,sans-serif',
+    gothic: 'Arial,Helvetica,sans-serif',
+    mono: 'ui-monospace,SFMono-Regular,Menlo,Consolas,monospace',
     noto: '"Noto Sans KR",-apple-system,system-ui,sans-serif',
     nanumgo: '"Nanum Gothic",-apple-system,system-ui,sans-serif',
     dodum: '"Gowun Dodum",-apple-system,system-ui,sans-serif',
@@ -440,7 +442,9 @@
       <div class="zp-row zp-heading"><span>피스 표시 설정</span><button type="button" data-action="close">✕</button></div>
       <div class="zp-row"><label for="zp-icon">아이콘 표시</label><input id="zp-icon" data-pref="showIcon" type="checkbox"></div>
       <div class="zp-row"><label for="zp-font">글씨체</label><select id="zp-font" data-pref="font">
-        <option value="system">기본 (제타)</option>
+        <option value="system">기본 고딕</option>
+        <option value="gothic">일반 고딕</option>
+        <option value="mono">고정폭</option>
         <option value="noto">노토 산스 KR</option>
         <option value="nanumgo">나눔고딕</option>
         <option value="dodum">고운돋움</option>
