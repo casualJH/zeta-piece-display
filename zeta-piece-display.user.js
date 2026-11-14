@@ -44,9 +44,7 @@
   let widget = null;
   let valueNode = null;
   let modelButton = null;
-  let lastPosition = '';
-  let placementLocked = false;
-  let hasModelAnchor = false;
+  let attachAttempts = 0;
   let viewportWidth = window.innerWidth;
   let pollTimer = 0;
   let uiTimer = 0;
@@ -221,13 +219,20 @@
       const style = document.createElement('style');
       style.id = 'zeta-piece-display-css';
       style.textContent = `
-        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:5px;
-          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:0 4px;border-radius:8px;transform:translateY(-50%);
-          pointer-events:none!important;white-space:nowrap;background:transparent;color:#f3f1f5;
-          font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
+        #zeta-piece-display {
+          position:static!important; inset:auto!important; transform:none!important;
+          display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;
+          box-sizing:border-box;flex:0 0 auto;align-self:center;
+          width:max-content;min-width:0;max-width:132px;height:36px;
+          padding:0;margin:0 12px 0 0;border:0;background:transparent!important;
+          pointer-events:none!important;white-space:nowrap;overflow:visible;
+          color:#fff;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
+          font-variant-numeric:tabular-nums;line-height:1;
+        }
         #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
-        #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;justify-content:center;line-height:1;height:23px;}
-        #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap;letter-spacing:-.15px;line-height:1;padding-top:1px;}
+        #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1;height:23px;}
+        #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.15px;line-height:1;}
+
       `;
       (document.head || document.documentElement).appendChild(style);
     }
@@ -236,13 +241,13 @@
     widget.innerHTML = `<img alt="" src="${COIN_IMAGE}"><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
     valueNode = widget.querySelector('.zpd-value');
     if (currentBalance !== null) valueNode.textContent = currentBalance.toLocaleString('ko-KR');
-    document.body.appendChild(widget);
+    // Do not insert into body: attach only beside the real model button.
     fitBalanceText();
     setStatus(lastStatus);
   }
 
   function fitBalanceText() {
-    if (!valueNode || !widget || !widget.isConnected) return;
+    if (!valueNode || !widget) return;
     const chars = (valueNode.textContent || '').length;
     // 4-digit balances (e.g. 1,000 or 9,999) keep the same 15px font.
     const base = chars > 9 ? 11 : chars > 7 ? 12 : chars > 5 ? 13 : 15;
@@ -254,89 +259,57 @@
     }
   }
 
-  // 헤더 DOM 구조가 다르더라도 'zeta' 텍스트가 있는 버튼을 찾습니다.
+  // Find the actual model selector, on either narrow mobile or desktop layouts.
+  // Do not use viewport-relative horizontal assumptions; desktop can have a
+  // narrow chat pane and a much wider browser window.
   function findModelButton() {
-    if (modelButton && modelButton.isConnected && modelButton.getClientRects().length) return modelButton;
+    if (modelButton && modelButton.isConnected && modelButton.getClientRects().length) {
+      return modelButton;
+    }
     modelButton = null;
-    const selectors = 'button,[role="button"],[aria-haspopup]';
-    const nodes = document.querySelectorAll(selectors);
+    const nodes = document.querySelectorAll('button,[role="button"]');
     let best = null;
-    for (let i = 0; i < nodes.length && i < 180; i++) {
+    let bestScore = -Infinity;
+    for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
       if (node === widget || widget?.contains(node)) continue;
-      const r = node.getBoundingClientRect();
-      if (r.width < 35 || r.height < 16 || r.top < -5 || r.top > 150 || r.left < innerWidth * .35) continue;
-      const str = (node.textContent || '').replace(/\s+/g, ' ').trim();
-      if (!/^zeta\b/i.test(str) || str.length > 22) continue;
-      if (!best || r.width < best.getBoundingClientRect().width) best = node;
+      const label = (node.textContent || '').replace(/\\s+/g, ' ').trim();
+      if (!/^zeta(?:\\s|$)/i.test(label) || label.length > 24) continue;
+      const rect = node.getBoundingClientRect();
+      if (rect.width < 34 || rect.height < 20 || rect.top < 0 || rect.top > 175 ||
+          rect.left < 0 || rect.right > document.documentElement.clientWidth + 4) continue;
+      if (!node.parentElement) continue;
+      const score = (node.closest('header,[role="banner"]') ? 10 : 0) +
+                    (label.toLowerCase() === 'zeta' ? 3 : 0) +
+                    (rect.top < 130 ? 2 : 0);
+      if (score > bestScore) {best = node; bestScore = score;}
     }
-    if (best) modelButton = best;
+    modelButton = best;
     return best;
   }
 
-  // A successfully identified zeta button is the one and only placement anchor.
-  // Temporary missing buttons or iOS Safari viewport jitter must not move the widget.
-  function positionWidget(force = false) {
+  // Insert as a sibling of the real model selector. Browser layout now owns
+  // both horizontal spacing and vertical centering, regardless of viewport,
+  // scrollbar, browser chrome, or the width of the desktop chat pane.
+  function positionWidget() {
     if (!document.body) return;
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
-      placementLocked = false;
-      hasModelAnchor = false;
       return;
     }
     ensureWidget();
-    if (!widget) return;
-    if (placementLocked && !force) {
-      if (widget.style.display === 'none') widget.style.display = 'flex';
-      return;
-    }
-
     const model = findModelButton();
-    if (model) {
-      const r = model.getBoundingClientRect();
-      // Only accept a visible, plausible model button near the right side of the header.
-      if (r.width >= 35 && r.height >= 16 && r.top >= 0 && r.top <= 150 &&
-          r.left > innerWidth * .45 && r.right <= innerWidth + 2) {
-        const width = Math.min(130, Math.max(65, r.left - 50));
-        const left = Math.max(43, r.left - width - 6);
-        // -3.5px visually aligns the coin artwork and text with the 'zeta' label.
-        const centerY = r.top + r.height / 2 - 3.5;
-        const id = `${Math.round(left)},${Math.round(centerY)},${Math.round(width)}`;
-        if (id !== lastPosition || widget.style.display === 'none') {
-          widget.style.left = `${left}px`;
-          widget.style.top = `${centerY}px`;
-          widget.style.width = `${width}px`;
-          widget.style.display = 'flex';
-          lastPosition = id;
-          fitBalanceText();
-        }
-        hasModelAnchor = true;
-        placementLocked = true;
-        return;
-      }
-    }
-
-    if (hasModelAnchor) {
-      // The last verified model-relative coordinates remain unchanged.
-      widget.style.display = 'flex';
-      placementLocked = true;
+    if (!model || !model.parentElement) {
+      if (widget) widget.style.display = 'none';
       return;
     }
-    // Original v0.1.0-style fallback is used only until the real button appears.
-    // Never switch among temporary header/menu targets.
-    const left = Math.max(43, innerWidth - 210);
-    const centerY = 29;
-    const width = 94;
-    const id = `${Math.round(left)},${centerY},${width}`;
-    if (id !== lastPosition || widget.style.display === 'none') {
-      widget.style.left = `${left}px`;
-      widget.style.top = `${centerY}px`;
-      widget.style.width = `${width}px`;
-      widget.style.display = 'flex';
-      lastPosition = id;
+    const parent = model.parentElement;
+    if (widget.parentElement !== parent || widget.nextElementSibling !== model) {
+      parent.insertBefore(widget, model);
       fitBalanceText();
     }
-    placementLocked = false;
+    if (widget.style.display !== 'inline-flex') widget.style.display = 'inline-flex';
+    attachAttempts = 0;
   }
 
   function watchUi() {
@@ -344,24 +317,24 @@
     if (route !== previousRoute) {
       previousRoute = route;
       modelButton = null;
-      lastPosition = '';
-      placementLocked = false;
-      hasModelAnchor = false;
+      attachAttempts = 0;
       if (isRoom() && isVisible()) schedulePoll(200);
     }
     if (isVisible()) positionWidget();
+    else if (!isRoom() && widget) widget.style.display = 'none';
     if (uiTimer) clearTimeout(uiTimer);
-    uiTimer = setTimeout(watchUi, isVisible() ? (modelButton ? 12000 : 3000) : 15000);
+    // Short startup checks, then sparse checks. No whole-page MutationObserver.
+    if (!widget?.isConnected && isRoom()) attachAttempts++;
+    uiTimer = setTimeout(watchUi, isRoom() && !widget?.isConnected ?
+      (attachAttempts < 12 ? 1000 : 3500) : 5000);
   }
 
   function onResize() {
-    // Mobile Safari fires resize for address/toolbars and tiny visual viewport changes.
-    // Re-anchor only for an actual large layout change (e.g., rotation).
-    if (Math.abs(window.innerWidth - viewportWidth) < 80) return;
-    viewportWidth = window.innerWidth;
-    placementLocked = false;
+    const width = window.innerWidth;
+    if (Math.abs(width - viewportWidth) < 60) return;
+    viewportWidth = width;
     modelButton = null;
-    positionWidget(true);
+    positionWidget();
   }
 
   function onVisibility() {
