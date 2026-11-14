@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.2
-// @description  채팅 상단에 실제 피스 잔액을 표시합니다. 30초 간격으로 가볍게 자동 갱신합니다.
+// @version      0.1.3
+// @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (0.1.0 기반 표시 복구).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
 // @downloadURL  https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_2';
+  const GUARD = '__zetaPieceDisplay_0_1_3';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -44,8 +44,9 @@
   let widget = null;
   let valueNode = null;
   let modelButton = null;
-  let lockedPlacement = false;
-  let lastViewportWidth = window.innerWidth;
+  let lastPosition = '';
+  let placementLocked = false;
+  let viewportWidth = window.innerWidth;
   let pollTimer = 0;
   let uiTimer = 0;
   let previousRoute = location.pathname;
@@ -110,8 +111,7 @@
     lastAuthAttempt = false;
     if (valueNode && changed) {
       valueNode.textContent = amount.toLocaleString('ko-KR');
-      valueNode.classList.toggle('zpd-long', amount >= 100000);
-      valueNode.classList.toggle('zpd-very-long', amount >= 10000000);
+      fitBalanceText();
     }
     setStatus(`최근 서버 확인: ${new Date(lastSuccess).toLocaleTimeString('ko-KR')}`);
     return true;
@@ -213,49 +213,6 @@
     }, delay);
   }
 
-  // Draw the supplied PNG on a canvas rather than loading a data: image URL.
-  // Some browser/site image policies can block data: <img> sources.
-  // A small vector fallback remains visible even if image decoding fails.
-  function drawCoin(canvas) {
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-    ctx.save();
-    ctx.translate(36, 36);
-    ctx.rotate(-0.32);
-    ctx.scale(0.85, 1.04);
-    const shade = ctx.createLinearGradient(-20, -25, 23, 27);
-    shade.addColorStop(0, '#bca0ff');
-    shade.addColorStop(.3, '#7442e9');
-    shade.addColorStop(.7, '#4b23ad');
-    shade.addColorStop(1, '#301769');
-    ctx.fillStyle = '#291354';
-    ctx.beginPath(); ctx.ellipse(2, 3, 26, 30, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.fillStyle = shade;
-    ctx.beginPath(); ctx.ellipse(0, 0, 25, 29, 0, 0, Math.PI * 2); ctx.fill();
-    ctx.strokeStyle = '#d8c4ff'; ctx.lineWidth = 2;
-    ctx.beginPath(); ctx.ellipse(-2, -2, 21, 25, 0, -2.7, -.4); ctx.stroke();
-    ctx.fillStyle = '#fff';
-    ctx.font = 'bold 33px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-    ctx.fillText('↯', 0, 1);
-    ctx.restore();
-    // Decode the original, user-supplied image once. Never run in the poll loop.
-    try {
-      const binary = atob(COIN_IMAGE.slice(COIN_IMAGE.indexOf(',') + 1));
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-      const blob = new Blob([bytes], {type: 'image/png'});
-      if (typeof createImageBitmap === 'function') {
-        createImageBitmap(blob).then(bitmap => {
-          if (!canvas.isConnected) {bitmap.close?.(); return;}
-          ctx.clearRect(0, 0, 72, 72);
-          ctx.drawImage(bitmap, 0, 0, 72, 72);
-          bitmap.close?.();
-        }).catch(() => {});
-      }
-    } catch (_) { /* keep visible fallback */ }
-  }
-
   function ensureWidget() {
     if (widget && widget.isConnected) return;
     if (!document.body) return;
@@ -263,32 +220,36 @@
       const style = document.createElement('style');
       style.id = 'zeta-piece-display-css';
       style.textContent = `
-        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;
-          justify-content:flex-start;gap:4px;box-sizing:border-box;min-width:0;max-width:118px;
-          height:36px;padding:2px 3px;border-radius:8px;overflow:hidden;
-          pointer-events:none!important;white-space:nowrap;background:transparent!important;color:#f3f1f5;
+        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:center;gap:4px;
+          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:2px 4px;border-radius:8px;
+          pointer-events:none!important;white-space:nowrap;background:transparent;color:#f3f1f5;
           font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
-        #zeta-piece-display .zpd-coin {display:block!important;width:23px!important;height:23px!important;min-width:23px!important;flex:none!important;opacity:1!important;visibility:visible!important;}
-        #zeta-piece-display .zpd-copy {display:flex;align-items:center;min-width:0;line-height:1;}
-        #zeta-piece-display .zpd-value {display:block;min-width:0;font-size:17px;font-weight:700;
-          color:#ae94ff;letter-spacing:-.35px;white-space:nowrap;}
-        #zeta-piece-display .zpd-value.zpd-long {font-size:14px;letter-spacing:-.5px;}
-        #zeta-piece-display .zpd-value.zpd-very-long {font-size:11px;letter-spacing:-.65px;}
+        #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;}
+        #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1.05;}
+        #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#ae94ff;white-space:nowrap;letter-spacing:-.35px;}
       `;
       (document.head || document.documentElement).appendChild(style);
     }
     widget = document.createElement('div');
     widget.id = 'zeta-piece-display';
-    widget.innerHTML = `<canvas class="zpd-coin" width="72" height="72" role="img" aria-label="피스"></canvas><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
-    drawCoin(widget.querySelector('.zpd-coin'));
+    widget.innerHTML = `<img alt="" src="${COIN_IMAGE}"><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
     valueNode = widget.querySelector('.zpd-value');
-    if (currentBalance !== null) {
-      valueNode.textContent = currentBalance.toLocaleString('ko-KR');
-      valueNode.classList.toggle('zpd-long', currentBalance >= 100000);
-      valueNode.classList.toggle('zpd-very-long', currentBalance >= 10000000);
-    }
+    if (currentBalance !== null) valueNode.textContent = currentBalance.toLocaleString('ko-KR');
     document.body.appendChild(widget);
+    fitBalanceText();
     setStatus(lastStatus);
+  }
+
+  function fitBalanceText() {
+    if (!valueNode || !widget || !widget.isConnected) return;
+    const available = Math.max(20, (widget.clientWidth || 94) - 35);
+    const digits = (valueNode.textContent || '').length;
+    const scale = digits > 9 ? 11 : digits > 7 ? 12 : digits > 5 ? 13 : 15;
+    valueNode.style.fontSize = scale + 'px';
+    // More room is available on wide screens; never wrap or clip the coin.
+    if (valueNode.scrollWidth > available) {
+      valueNode.style.fontSize = Math.max(9, Math.floor(scale * available / valueNode.scrollWidth)) + 'px';
+    }
   }
 
   // 헤더 DOM 구조가 다르더라도 'zeta' 텍스트가 있는 버튼을 찾습니다.
@@ -311,46 +272,48 @@
     return best;
   }
 
-  // Locate once, then keep a stable right-edge offset instead of following
-  // short-lived header geometry changes on every polling cycle.
   function positionWidget(force = false) {
     if (!document.body) return;
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
-      lockedPlacement = false;
+      placementLocked = false;
       return;
     }
     ensureWidget();
     if (!widget) return;
-    if (lockedPlacement && !force) {
+    if (placementLocked && !force) {
       if (widget.style.display === 'none') widget.style.display = 'flex';
       return;
     }
     const model = findModelButton();
-    if (!model) {
-      // Do not jump between a model-relative location and a menu fallback.
-      // Wait for the actual model button to appear.
-      if (!lockedPlacement) widget.style.display = 'none';
-      return;
+    let top = 11, left = Math.max(44, innerWidth - 210), width = 94;
+    if (model) {
+      const r = model.getBoundingClientRect();
+      width = Math.min(130, Math.max(65, r.left - 50));
+      left = Math.max(43, r.left - width - 5);
+      top = Math.max(2, r.top + (r.height - 36) / 2);
+    } else {
+      // 모델 버튼 탐지 실패 시에도 스크립트가 작동하지 않는 것처럼 숨기지 않습니다.
+      const menu = Array.from(document.querySelectorAll('header button,nav button,[aria-label="메뉴"],[aria-label="Menu"]'))
+        .find(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < 150 && r.right > innerWidth - 85; });
+      if (menu) {
+        const r = menu.getBoundingClientRect();
+        left = Math.max(43, r.left - width - 94);
+        top = Math.max(2, r.top + (r.height - 36) / 2);
+      }
     }
-    const r = model.getBoundingClientRect();
-    const screenWidth = Math.max(1, window.innerWidth);
-    const reservedLeft = Math.max(4, Math.min(92, screenWidth * .24));
-    const gap = 8;
-    const available = Math.floor(r.left - reservedLeft - gap);
-    const width = Math.max(0, Math.min(118, available));
-    if (width < 48) {
-      // On very narrow headers don't overlap the title or the model switcher.
-      widget.style.display = 'none';
-      lockedPlacement = false;
-      return;
+    const id = `${Math.round(left)},${Math.round(top)},${Math.round(width)}`;
+    if (id !== lastPosition || widget.style.display === 'none') {
+      widget.style.left = `${left}px`;
+      widget.style.top = `${top}px`;
+      widget.style.width = `${width}px`;
+      widget.style.display = 'flex';
+      lastPosition = id;
+      fitBalanceText();
     }
-    widget.style.left = 'auto';
-    widget.style.top = `${Math.max(2, Math.round(r.top + (r.height - 36) / 2))}px`;
-    widget.style.right = `${Math.max(0, Math.round(screenWidth - r.left + gap))}px`;
-    widget.style.width = `${width}px`;
-    widget.style.display = 'flex';
-    lockedPlacement = true;
+    // 모델 버튼 탐색에 실패해도 0.1.0처럼 항상 표시합니다.
+    // 최초 위치를 유지하며 12초 점검 시 움직이지 않습니다.
+    placementLocked = true;
   }
 
   function watchUi() {
@@ -358,21 +321,20 @@
     if (route !== previousRoute) {
       previousRoute = route;
       modelButton = null;
-      lockedPlacement = false;
+      lastPosition = '';
+      placementLocked = false;
       if (isRoom() && isVisible()) schedulePoll(200);
     }
-    if (isVisible() && isRoom() && !lockedPlacement) positionWidget();
-    if (!isRoom() && widget) widget.style.display = 'none';
+    if (isVisible()) positionWidget();
     if (uiTimer) clearTimeout(uiTimer);
-    uiTimer = setTimeout(watchUi, lockedPlacement ? 12000 : 2500);
+    uiTimer = setTimeout(watchUi, isVisible() ? (modelButton ? 12000 : 3000) : 15000);
   }
 
   function onResize() {
-    const width = window.innerWidth;
-    if (Math.abs(width - lastViewportWidth) < 3) return;
-    lastViewportWidth = width;
+    if (Math.abs(window.innerWidth - viewportWidth) < 3) return;
+    viewportWidth = window.innerWidth;
+    placementLocked = false;
     modelButton = null;
-    lockedPlacement = false;
     positionWidget(true);
   }
 
