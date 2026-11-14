@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.2.1
+// @version      0.2.2
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_2_1';
+  const GUARD = '__zetaPieceDisplay_0_2_2';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -36,12 +36,71 @@
   const PREF_KEY = 'zeta-piece-display-preferences';
   const DEFAULTS = Object.freeze({showIcon: true, font: 'system', fontSize: 15,
     spacing: -0.5, color: '#FFFFFF', iconSize: 20, iconGap: 2, modelGap: 12, offsetY: 0});
+  // Font choices based on zeta-color-customizer's Google Fonts presets.
+  // Only load the font the user selects; keep the original system font as default.
   const FONT_STACKS = {
     system: '-apple-system,BlinkMacSystemFont,system-ui,sans-serif',
-    gothic: 'Arial,Helvetica,sans-serif',
-    serif: 'Georgia,serif',
-    mono: 'ui-monospace,SFMono-Regular,Menlo,monospace'
+    noto: '"Noto Sans KR",-apple-system,system-ui,sans-serif',
+    nanumgo: '"Nanum Gothic",-apple-system,system-ui,sans-serif',
+    dodum: '"Gowun Dodum",-apple-system,system-ui,sans-serif',
+    dohyeon: '"Do Hyeon",-apple-system,system-ui,sans-serif',
+    serif: '"Noto Serif KR",Georgia,serif',
+    gowunb: '"Gowun Batang",Georgia,serif'
   };
+  const GOOGLE_FONT_CSS = {
+    noto:'Noto+Sans+KR:wght@400;500;600;700',
+    nanumgo:'Nanum+Gothic:wght@400;700',
+    dodum:'Gowun+Dodum',
+    dohyeon:'Do+Hyeon',
+    serif:'Noto+Serif+KR:wght@400;500;600;700',
+    gowunb:'Gowun+Batang:wght@400;700'
+  };
+  let fontRequestGeneration = 0;
+  function loadSelectedFont(font) {
+    const family = GOOGLE_FONT_CSS[font];
+    if (!family) return;
+    const id = 'zpd-font-css-' + font;
+    if (!document.getElementById(id)) {
+      const link = document.createElement('link');
+      link.id = id;
+      link.rel = 'stylesheet';
+      link.href = 'https://fonts.googleapis.com/css2?family=' + family + '&display=swap';
+      (document.head || document.documentElement).appendChild(link);
+    }
+    const generation = ++fontRequestGeneration;
+    // As font data arrives, normalize the visible height once; no DOM polling.
+    const familyName = FONT_STACKS[font].split(',')[0];
+    if (document.fonts && document.fonts.load) {
+      document.fonts.load('700 ' + prefs.fontSize + 'px ' + familyName, '0123456789')
+        .then(() => {if (generation === fontRequestGeneration) fitBalanceText();})
+        .catch(() => {});
+    }
+  }
+  // Normalization factors applied only after the selected font is ready.
+  // Canvas glyph-height measurement avoids arbitrary per-font pixel sizes.
+  let fontMetricsCanvas = null;
+  function visualFontSize() {
+    const requested = prefs.fontSize;
+    if (prefs.font === 'system' || !document.fonts || !document.fonts.check) return requested;
+    const family = FONT_STACKS[prefs.font]?.split(',')[0];
+    if (!family || !document.fonts.check('700 ' + requested + 'px ' + family, '0123456789')) return requested;
+    try {
+      fontMetricsCanvas ||= document.createElement('canvas');
+      const ctx = fontMetricsCanvas.getContext('2d');
+      if (!ctx) return requested;
+      const reference = '-apple-system,system-ui,sans-serif';
+      ctx.font = '700 50px ' + reference;
+      const baseline = ctx.measureText('0123456789');
+      ctx.font = '700 50px ' + family;
+      const current = ctx.measureText('0123456789');
+      const measure = v => (v.actualBoundingBoxAscent || 0) + (v.actualBoundingBoxDescent || 0);
+      const bh = measure(baseline), ch = measure(current);
+      if (!(bh > 0 && ch > 0)) return requested;
+      // Constrain the factor to prevent any extreme font or browser metrics.
+      const factor = Math.min(1.12, Math.max(0.88, bh/ch));
+      return Math.round(requested * factor * 10)/10;
+    } catch (_) {return requested;}
+  }
   const PREF_RANGES = {fontSize:[10,24],spacing:[-2,3],iconSize:[16,32],
     iconGap:[0,12],modelGap:[0,24],offsetY:[-10,10]};
   function readPrefs() {
@@ -311,7 +370,7 @@
   }
 
   function fitBalanceText() {
-    if (valueNode) valueNode.style.fontSize = prefs.fontSize + 'px';
+    if (valueNode) valueNode.style.fontSize = visualFontSize() + 'px';
   }
 
   function applyAppearance() {
@@ -324,9 +383,20 @@
     }
     widget.style.gap = prefs.showIcon ? prefs.iconGap + 'px' : '0px';
     valueNode.style.fontFamily = FONT_STACKS[prefs.font];
+    valueNode.style.fontVariantNumeric = 'tabular-nums';
+    valueNode.style.fontFeatureSettings = '"tnum" 1, "lnum" 1';
+    loadSelectedFont(prefs.font);
     valueNode.style.letterSpacing = prefs.spacing + 'px';
     valueNode.style.color = prefs.color;
     fitBalanceText();
+    if (settingsPanel) {
+      const preview = settingsPanel.querySelector('#zp-font-preview');
+      if (preview) {
+        preview.style.fontFamily = FONT_STACKS[prefs.font];
+        preview.style.fontSize = prefs.fontSize + 'px';
+        preview.style.letterSpacing = prefs.spacing + 'px';
+      }
+    }
   }
 
   function closeSettings() {
@@ -370,8 +440,14 @@
       <div class="zp-row zp-heading"><span>피스 표시 설정</span><button type="button" data-action="close">✕</button></div>
       <div class="zp-row"><label for="zp-icon">아이콘 표시</label><input id="zp-icon" data-pref="showIcon" type="checkbox"></div>
       <div class="zp-row"><label for="zp-font">글씨체</label><select id="zp-font" data-pref="font">
-        <option value="system">기본 고딕</option><option value="gothic">일반 고딕</option>
-        <option value="serif">명조</option><option value="mono">고정폭</option></select></div>
+        <option value="system">기본 (제타)</option>
+        <option value="noto">노토 산스 KR</option>
+        <option value="nanumgo">나눔고딕</option>
+        <option value="dodum">고운돋움</option>
+        <option value="dohyeon">도현</option>
+        <option value="serif">노토 세리프 KR</option>
+        <option value="gowunb">고운바탕</option></select></div>
+      <div class="zp-row" style="justify-content:flex-end"><span class="zp-hint" id="zp-font-preview">미리보기: 1,000</span></div>
       <div class="zp-row"><label for="zp-size">글씨 크기</label><input id="zp-size" type="range" data-pref="fontSize" min="10" max="24" step="1"><span class="zp-value" data-output="fontSize"></span></div>
       <div class="zp-row"><label for="zp-spacing">자간</label><input id="zp-spacing" type="range" data-pref="spacing" min="-2" max="3" step="0.1"><span class="zp-value" data-output="spacing"></span></div>
       <div class="zp-row"><label for="zp-color">글씨 색상</label><input id="zp-color" type="text" maxlength="7" placeholder="#FFFFFF" data-pref="color" autocapitalize="characters" spellcheck="false"></div>
@@ -405,6 +481,12 @@
     document.body.appendChild(panel);
     settingsPanel = panel;
     syncSettings();
+    const preview = panel.querySelector('#zp-font-preview');
+    if (preview) {
+      preview.style.fontFamily = FONT_STACKS[prefs.font];
+      preview.style.fontSize = prefs.fontSize + 'px';
+      preview.style.letterSpacing = prefs.spacing + 'px';
+    }
     const rect = widget.getBoundingClientRect();
     const pw = panel.offsetWidth, ph = panel.offsetHeight;
     panel.style.left = Math.round(Math.max(10, Math.min(window.innerWidth-pw-10, rect.right-pw))) + 'px';
