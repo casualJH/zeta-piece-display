@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.2.4
+// @version      0.9.0
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,9 +16,13 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_2_4';
-  if (window[GUARD]) return;
+  // Stable guard across releases; cooperate with previously installed versions.
+  const GUARD = '__zetaPieceDisplayActive';
+  const LEGACY_RE = /^__zetaPieceDisplay_0_[12]_\d+$/;
+  if (window[GUARD] || Object.keys(window).some(k => LEGACY_RE.test(k) && window[k])) return;
   window[GUARD] = true;
+  for (let v=0; v<=12; v++) window['__zetaPieceDisplay_0_1_' + v] = true;
+  for (let v=0; v<=4; v++) window['__zetaPieceDisplay_0_2_' + v] = true;
 
   const API_ORIGIN = 'https://api.zeta-ai.io';
   const BALANCE_PATH = '/v1/coin/balance';
@@ -125,6 +129,9 @@
 
   const auth = Object.create(null);
   let currentBalance = null;
+  // A successful newer-started request must not be overwritten by a late old response.
+  let requestTicket = 0;
+  let acceptedTicket = 0;
   let lastSuccess = 0;
   let lastAttempt = 0;
   let lastAuthAttempt = false;
@@ -137,7 +144,6 @@
   let attachAttempts = 0;
   let placementReady = false;
   let viewportWidth = window.innerWidth;
-  let viewportHeight = window.innerHeight;
   let pollTimer = 0;
   let uiTimer = 0;
   let previousRoute = location.pathname;
@@ -190,10 +196,12 @@
     }
   }
 
-  function acceptBalance(data) {
+  function acceptBalance(data, ticket = ++requestTicket) {
     if (!data || typeof data !== 'object' || Array.isArray(data)) return false;
     const amount = data.balance;
     if (typeof amount !== 'number' || !Number.isFinite(amount) || amount < 0) return false;
+    if (ticket < acceptedTicket) return true; // Valid stale response, not a failure.
+    acceptedTicket = ticket;
     const changed = amount !== currentBalance;
     currentBalance = amount;
     lastSuccess = Date.now();
@@ -217,10 +225,13 @@
         takeHeaders(toEntries(input && input.headers));
         takeHeaders(toEntries(init && init.headers));
       }
+      const ticket = path === BALANCE_PATH ? ++requestTicket : 0;
       const result = originalFetch.apply(this, arguments);
       if (path === BALANCE_PATH) {
         Promise.resolve(result).then(response => {
-          if (response && response.ok) response.clone().json().then(acceptBalance).catch(() => {});
+          if (response && response.ok) {
+            response.clone().json().then(data => acceptBalance(data, ticket)).catch(() => {});
+          }
         }).catch(() => {});
       }
       return result;
@@ -247,12 +258,13 @@
     if (record) {
       takeHeaders(record.headers);
       if (record.path === BALANCE_PATH) {
+        const ticket = ++requestTicket;
         this.addEventListener('load', function () {
           if (this.status < 200 || this.status >= 300) return;
           try {
             const json = this.responseType === 'json' ? this.response :
               (!this.responseType || this.responseType === 'text') ? JSON.parse(this.responseText) : null;
-            if (json) acceptBalance(json);
+            if (json) acceptBalance(json, ticket);
           } catch (_) {}
         }, {once: true});
       }
@@ -264,6 +276,7 @@
     if (inFlight || !isVisible() || !isRoom() || Date.now() < retryAfter) return;
     if (typeof originalFetch !== 'function') return;
     inFlight = true;
+    const ticket = ++requestTicket;
     lastAttempt = Date.now();
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const abortTimer = controller ? setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS) : 0;
@@ -272,7 +285,7 @@
         method: 'GET', headers: {...auth}, credentials: 'include', cache: 'no-store',
         ...(controller ? {signal: controller.signal} : {})
       });
-      if (response.ok && acceptBalance(await response.json())) return;
+      if (response.ok && acceptBalance(await response.json(), ticket)) return;
       failureCount += 1;
       if (response.status === 401 || response.status === 403) {
         lastAuthAttempt = true;
@@ -395,6 +408,31 @@
 
   function closeSettings() {
     if (settingsPanel) {settingsPanel.remove(); settingsPanel = null;}
+    const view = window.visualViewport;
+    if (view) {
+      view.removeEventListener('resize', positionSettingsPanel);
+      view.removeEventListener('scroll', positionSettingsPanel);
+    }
+  }
+
+  // Only the popup moves with Safari's visual viewport; the piece stays fixed.
+  function positionSettingsPanel() {
+    if (!settingsPanel || !widget || !settingsPanel.isConnected) return;
+    const view = window.visualViewport;
+    const vx = view ? view.offsetLeft : 0;
+    const vy = view ? view.offsetTop : 0;
+    const vw = view ? view.width : window.innerWidth;
+    const vh = view ? view.height : window.innerHeight;
+    settingsPanel.style.maxHeight = Math.max(100, Math.min(520, Math.floor(vh * .7), vh - 20)) + 'px';
+    const pw = settingsPanel.offsetWidth, ph = settingsPanel.offsetHeight;
+    const rect = widget.getBoundingClientRect();
+    const minX = vx + 10, maxX = Math.max(minX, vx + vw - pw - 10);
+    const left = Math.max(minX, Math.min(maxX, rect.right - pw));
+    const below = rect.bottom + 8, above = rect.top - ph - 8;
+    const proposed = below + ph + 10 <= vy + vh ? below : above;
+    const top = Math.max(vy + 10, Math.min(vy + vh - ph - 10, proposed));
+    settingsPanel.style.left = Math.round(left) + 'px';
+    settingsPanel.style.top = Math.round(top) + 'px';
   }
 
   function updatePref(key, value) {
@@ -476,11 +514,12 @@
     document.body.appendChild(panel);
     settingsPanel = panel;
     syncSettings();
-    const rect = widget.getBoundingClientRect();
-    const pw = panel.offsetWidth, ph = panel.offsetHeight;
-    panel.style.left = Math.round(Math.max(10, Math.min(window.innerWidth-pw-10, rect.right-pw))) + 'px';
-    panel.style.top = Math.round(rect.bottom+ph+8 < window.innerHeight
-      ? rect.bottom+8 : Math.max(10,rect.top-ph-8)) + 'px';
+    positionSettingsPanel();
+    const view = window.visualViewport;
+    if (view) {
+      view.addEventListener('resize', positionSettingsPanel, {passive:true});
+      view.addEventListener('scroll', positionSettingsPanel, {passive:true});
+    }
   }
 
   // The model selector contains a logo image, not text. Locate its stable test id.
@@ -532,8 +571,16 @@
   function watchUi() {
     const route = location.pathname;
     if (route !== previousRoute) {
+      const wasRoom = ROOM_RE.test(previousRoute);
       previousRoute = route;
-      if (isRoom() && isVisible()) schedulePoll(200);
+      if (isRoom()) {
+        // Room-to-room keeps its coordinates; re-entry and replaced headers remeasure.
+        if (!wasRoom || !modelButton?.isConnected) {
+          placementReady = false;
+          modelButton = null;
+        }
+        if (isVisible()) schedulePoll(200);
+      }
     }
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
@@ -551,10 +598,11 @@
   }
 
   function onResize() {
-    const w = window.innerWidth, h = window.innerHeight;
-    if (Math.abs(w - viewportWidth) < 3 && Math.abs(h - viewportHeight) < 60) return;
-    viewportWidth = w;
-    viewportHeight = h;
+    if (settingsPanel) positionSettingsPanel();
+    const width = window.innerWidth;
+    // Soft keyboard and browser toolbar height changes cannot reposition the piece.
+    if (Math.abs(width - viewportWidth) < 3) return;
+    viewportWidth = width;
     modelButton = null;
     placementReady = false;
     positionWidget(true);
@@ -567,6 +615,7 @@
       return;
     }
     positionWidget();
+    if (settingsPanel) positionSettingsPanel();
     schedulePoll(lastAttempt && Date.now() - lastAttempt < 3000 ? 3000 : 200);
   }
 
