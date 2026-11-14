@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.8
+// @version      0.1.9
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_8';
+  const GUARD = '__zetaPieceDisplay_0_1_9';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -224,7 +224,7 @@
         #zeta-piece-display {
           position:fixed!important;left:auto!important;bottom:auto!important;
           transform:translateY(-50%)!important;
-          z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:5px;
+          z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:3px;
           box-sizing:border-box;width:max-content;max-width:136px;height:36px;
           padding:0;margin:0;border:0;background:transparent!important;
           pointer-events:none!important;white-space:nowrap;overflow:visible;
@@ -303,7 +303,7 @@
     const gap = 12;
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     widget.style.right = `${Math.round(viewportWidth - r.left + gap)}px`;
-    widget.style.top = `${Math.round(r.top + r.height / 2)}px`;
+    widget.style.top = `${Math.round(r.top + r.height / 2 - 2)}px`;
     widget.style.display = 'flex';
     placementReady = true;
     attachAttempts = 0;
