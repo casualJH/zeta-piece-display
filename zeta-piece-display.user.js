@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.3
+// @version      0.1.4
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (0.1.0 기반 표시 복구).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_3';
+  const GUARD = '__zetaPieceDisplay_0_1_4';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -220,8 +220,8 @@
       const style = document.createElement('style');
       style.id = 'zeta-piece-display-css';
       style.textContent = `
-        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:center;gap:4px;
-          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:2px 4px;border-radius:8px;
+        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:4px;
+          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:2px 4px;border-radius:8px;transform:translateY(-50%);
           pointer-events:none!important;white-space:nowrap;background:transparent;color:#f3f1f5;
           font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
         #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;}
@@ -242,13 +242,14 @@
 
   function fitBalanceText() {
     if (!valueNode || !widget || !widget.isConnected) return;
+    const chars = (valueNode.textContent || '').length;
+    // 4-digit balances (e.g. 1,000 or 9,999) keep the same 15px font.
+    const base = chars > 9 ? 11 : chars > 7 ? 12 : chars > 5 ? 13 : 15;
+    valueNode.style.fontSize = base + 'px';
+    if (chars <= 5) return;
     const available = Math.max(20, (widget.clientWidth || 94) - 35);
-    const digits = (valueNode.textContent || '').length;
-    const scale = digits > 9 ? 11 : digits > 7 ? 12 : digits > 5 ? 13 : 15;
-    valueNode.style.fontSize = scale + 'px';
-    // More room is available on wide screens; never wrap or clip the coin.
     if (valueNode.scrollWidth > available) {
-      valueNode.style.fontSize = Math.max(9, Math.floor(scale * available / valueNode.scrollWidth)) + 'px';
+      valueNode.style.fontSize = Math.max(9, Math.floor(base * available / valueNode.scrollWidth)) + 'px';
     }
   }
 
@@ -286,34 +287,35 @@
       return;
     }
     const model = findModelButton();
-    let top = 11, left = Math.max(44, innerWidth - 210), width = 94;
+    // Keep the working v0.1.0 fallback visible until the model is found.
+    let centerY = 29, left = Math.max(44, innerWidth - 210), width = 94;
     if (model) {
       const r = model.getBoundingClientRect();
       width = Math.min(130, Math.max(65, r.left - 50));
       left = Math.max(43, r.left - width - 5);
-      top = Math.max(2, r.top + (r.height - 36) / 2);
+      centerY = r.top + r.height / 2;
     } else {
-      // 모델 버튼 탐지 실패 시에도 스크립트가 작동하지 않는 것처럼 숨기지 않습니다.
       const menu = Array.from(document.querySelectorAll('header button,nav button,[aria-label="메뉴"],[aria-label="Menu"]'))
         .find(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < 150 && r.right > innerWidth - 85; });
       if (menu) {
         const r = menu.getBoundingClientRect();
         left = Math.max(43, r.left - width - 94);
-        top = Math.max(2, r.top + (r.height - 36) / 2);
+        centerY = r.top + r.height / 2;
       }
     }
-    const id = `${Math.round(left)},${Math.round(top)},${Math.round(width)}`;
+    // The widget is aligned to the real button's vertical midpoint, not an
+    // estimated top offset. Right-aligned content stays beside the button.
+    const id = `${Math.round(left)},${Math.round(centerY)},${Math.round(width)}`;
     if (id !== lastPosition || widget.style.display === 'none') {
       widget.style.left = `${left}px`;
-      widget.style.top = `${top}px`;
+      widget.style.top = `${centerY}px`;
       widget.style.width = `${width}px`;
       widget.style.display = 'flex';
       lastPosition = id;
       fitBalanceText();
     }
-    // 모델 버튼 탐색에 실패해도 0.1.0처럼 항상 표시합니다.
-    // 최초 위치를 유지하며 12초 점검 시 움직이지 않습니다.
-    placementLocked = true;
+    // If only fallback was found, retry later instead of freezing the wrong location.
+    placementLocked = !!model;
   }
 
   function watchUi() {
