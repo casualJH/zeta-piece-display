@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      1.0.0
+// @version      1.1.0
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -342,7 +342,9 @@
            Hide only our widget and its popup while this panel exists;
            CSS restores them immediately when the panel is unmounted. */
         body:has([data-testid="phone-peek-panel"]) #zeta-piece-display,
-        body:has([data-testid="phone-peek-panel"]) #zeta-piece-display-settings {
+        body:has([data-testid="phone-peek-panel"]) #zeta-piece-display-settings,
+        body:has([data-testid="anonymous-board-safe-area"]) #zeta-piece-display,
+        body:has([data-testid="anonymous-board-safe-area"]) #zeta-piece-display-settings {
           display:none!important;
         }
         #zeta-piece-display-settings {position:fixed;z-index:2147483600;width:min(300px,calc(100vw - 20px));
