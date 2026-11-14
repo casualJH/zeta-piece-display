@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.2.0
+// @version      0.2.1
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_2_0';
+  const GUARD = '__zetaPieceDisplay_0_2_1';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -35,7 +35,7 @@
 
   const PREF_KEY = 'zeta-piece-display-preferences';
   const DEFAULTS = Object.freeze({showIcon: true, font: 'system', fontSize: 15,
-    spacing: -0.5, color: '#FFFFFF', iconSize: 23, iconGap: 2, modelGap: 12, offsetY: 0});
+    spacing: -0.5, color: '#FFFFFF', iconSize: 20, iconGap: 2, modelGap: 12, offsetY: 0});
   const FONT_STACKS = {
     system: '-apple-system,BlinkMacSystemFont,system-ui,sans-serif',
     gothic: 'Arial,Helvetica,sans-serif',
@@ -260,7 +260,7 @@
           color:#fff;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
           font-variant-numeric:tabular-nums;line-height:1;
         }
-        #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
+        #zeta-piece-display img {width:20px;height:20px;object-fit:contain;flex:none;display:block;}
         #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1;height:23px;}
         #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.5px;line-height:1;}
         #zeta-piece-display:focus-visible {outline:2px solid #ad91fa;outline-offset:2px;}
