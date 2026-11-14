@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.10
+// @version      0.1.11
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_10';
+  const GUARD = '__zetaPieceDisplay_0_1_11';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -303,7 +303,7 @@
     const gap = 12;
     const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
     widget.style.right = `${Math.round(viewportWidth - r.left + gap)}px`;
-    widget.style.top = `${Math.round(r.top + r.height / 2 - 1)}px`;
+    widget.style.top = `${Math.round(r.top + r.height / 2)}px`;
     widget.style.display = 'flex';
     placementReady = true;
     attachAttempts = 0;
