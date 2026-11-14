@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.6
+// @version      0.1.7
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_6';
+  const GUARD = '__zetaPieceDisplay_0_1_7';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -45,7 +45,9 @@
   let valueNode = null;
   let modelButton = null;
   let attachAttempts = 0;
+  let placementReady = false;
   let viewportWidth = window.innerWidth;
+  let viewportHeight = window.innerHeight;
   let pollTimer = 0;
   let uiTimer = 0;
   let previousRoute = location.pathname;
@@ -220,11 +222,11 @@
       style.id = 'zeta-piece-display-css';
       style.textContent = `
         #zeta-piece-display {
-          position:static!important; inset:auto!important; transform:none!important;
-          display:inline-flex;align-items:center;justify-content:flex-end;gap:5px;
-          box-sizing:border-box;flex:0 0 auto;align-self:center;
-          width:max-content;min-width:0;max-width:132px;height:36px;
-          padding:0;margin:0 12px 0 0;border:0;background:transparent!important;
+          position:fixed!important;left:auto!important;bottom:auto!important;
+          transform:translateY(-50%)!important;
+          z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:5px;
+          box-sizing:border-box;width:max-content;max-width:136px;height:36px;
+          padding:0;margin:0;border:0;background:transparent!important;
           pointer-events:none!important;white-space:nowrap;overflow:visible;
           color:#fff;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
           font-variant-numeric:tabular-nums;line-height:1;
@@ -232,7 +234,6 @@
         #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
         #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1;height:23px;}
         #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.15px;line-height:1;}
-
       `;
       (document.head || document.documentElement).appendChild(style);
     }
@@ -241,7 +242,10 @@
     widget.innerHTML = `<img alt="" src="${COIN_IMAGE}"><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
     valueNode = widget.querySelector('.zpd-value');
     if (currentBalance !== null) valueNode.textContent = currentBalance.toLocaleString('ko-KR');
-    // Do not insert into body: attach only beside the real model button.
+    // Fixed coordinates must be relative to the viewport, not an app flex row.
+    // Keep the widget hidden until its anchor is measured.
+    widget.style.display = 'none';
+    document.body.appendChild(widget);
     fitBalanceText();
     setStatus(lastStatus);
   }
@@ -259,9 +263,8 @@
     }
   }
 
-  // Find the actual model selector, on either narrow mobile or desktop layouts.
-  // Do not use viewport-relative horizontal assumptions; desktop can have a
-  // narrow chat pane and a much wider browser window.
+  // Search only while first placing or after a genuine viewport size change.
+  // Use the real model button's rectangle, never a page-width fallback.
   function findModelButton() {
     if (modelButton && modelButton.isConnected && modelButton.getClientRects().length) {
       return modelButton;
@@ -269,72 +272,83 @@
     modelButton = null;
     const nodes = document.querySelectorAll('button,[role="button"]');
     let best = null;
-    let bestScore = -Infinity;
+    let score = -1;
     for (let i = 0; i < nodes.length; i++) {
       const node = nodes[i];
-      if (node === widget || widget?.contains(node)) continue;
-      const label = (node.textContent || '').replace(/\\s+/g, ' ').trim();
-      if (!/^zeta(?:\\s|$)/i.test(label) || label.length > 24) continue;
-      const rect = node.getBoundingClientRect();
-      if (rect.width < 34 || rect.height < 20 || rect.top < 0 || rect.top > 175 ||
-          rect.left < 0 || rect.right > document.documentElement.clientWidth + 4) continue;
-      if (!node.parentElement) continue;
-      const score = (node.closest('header,[role="banner"]') ? 10 : 0) +
-                    (label.toLowerCase() === 'zeta' ? 3 : 0) +
-                    (rect.top < 130 ? 2 : 0);
-      if (score > bestScore) {best = node; bestScore = score;}
+      if (widget?.contains(node)) continue;
+      const text = (node.textContent || '').replace(/\s+/g, ' ').trim();
+      if (!/^zeta(?:\s|$)/i.test(text) || text.length > 24) continue;
+      const r = node.getBoundingClientRect();
+      if (r.width < 35 || r.height < 20 || r.top < 0 || r.top > 180 ||
+          r.left < 0 || r.right > innerWidth + 4) continue;
+      const rank = (node.closest('header,[role="banner"]') ? 10 : 0) +
+                   (text.toLowerCase() === 'zeta' ? 3 : 0) +
+                   (r.top < 130 ? 2 : 0);
+      if (rank > score) {best = node; score = rank;}
     }
     modelButton = best;
     return best;
   }
 
-  // Insert as a sibling of the real model selector. Browser layout now owns
-  // both horizontal spacing and vertical centering, regardless of viewport,
-  // scrollbar, browser chrome, or the width of the desktop chat pane.
-  function positionWidget() {
+  // Measure ONCE, then keep fixed right/top coordinates. A changing number,
+  // periodic balance request, scroll or input focus never repositions this.
+  function positionWidget(force = false) {
     if (!document.body) return;
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
       return;
     }
     ensureWidget();
-    const model = findModelButton();
-    if (!model || !model.parentElement) {
-      if (widget) widget.style.display = 'none';
+    if (!widget) return;
+    if (placementReady && !force) {
+      if (widget.style.display !== 'flex') widget.style.display = 'flex';
       return;
     }
-    const parent = model.parentElement;
-    if (widget.parentElement !== parent || widget.nextElementSibling !== model) {
-      parent.insertBefore(widget, model);
-      fitBalanceText();
+    const model = findModelButton();
+    if (!model) {
+      // No guessed position: wait until the actual model button exists.
+      widget.style.display = 'none';
+      return;
     }
-    if (widget.style.display !== 'inline-flex') widget.style.display = 'inline-flex';
+    const r = model.getBoundingClientRect();
+    const gap = 12;
+    // Fixed right edge means longer balances expand LEFT, keeping the gap.
+    widget.style.right = `${Math.round(innerWidth - r.left + gap)}px`;
+    widget.style.top = `${Math.round(r.top + r.height / 2)}px`;
+    widget.style.display = 'flex';
+    placementReady = true;
     attachAttempts = 0;
+    fitBalanceText();
   }
 
   function watchUi() {
     const route = location.pathname;
     if (route !== previousRoute) {
       previousRoute = route;
-      modelButton = null;
-      attachAttempts = 0;
       if (isRoom() && isVisible()) schedulePoll(200);
     }
-    if (isVisible()) positionWidget();
-    else if (!isRoom() && widget) widget.style.display = 'none';
+    if (!isRoom()) {
+      if (widget) widget.style.display = 'none';
+    } else if (isVisible() && (!placementReady || !widget?.isConnected)) {
+      positionWidget();
+    } else if (isVisible() && widget && widget.style.display === 'none') {
+      widget.style.display = 'flex';
+    }
     if (uiTimer) clearTimeout(uiTimer);
-    // Short startup checks, then sparse checks. No whole-page MutationObserver.
-    if (!widget?.isConnected && isRoom()) attachAttempts++;
-    uiTimer = setTimeout(watchUi, isRoom() && !widget?.isConnected ?
-      (attachAttempts < 12 ? 1000 : 3500) : 5000);
+    // No DOM observer and no repeated position calculation after placement.
+    if (!placementReady && isRoom()) attachAttempts++;
+    uiTimer = setTimeout(watchUi, !placementReady && isRoom() ?
+      (attachAttempts < 12 ? 1000 : 4000) : 5000);
   }
 
   function onResize() {
-    const width = window.innerWidth;
-    if (Math.abs(width - viewportWidth) < 60) return;
-    viewportWidth = width;
+    const w = window.innerWidth, h = window.innerHeight;
+    if (Math.abs(w - viewportWidth) < 3 && Math.abs(h - viewportHeight) < 60) return;
+    viewportWidth = w;
+    viewportHeight = h;
     modelButton = null;
-    positionWidget();
+    placementReady = false;
+    positionWidget(true);
   }
 
   function onVisibility() {
