@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.4
-// @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (0.1.0 기반 표시 복구).
+// @version      0.1.5
+// @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
 // @downloadURL  https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_4';
+  const GUARD = '__zetaPieceDisplay_0_1_5';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -220,13 +220,13 @@
       const style = document.createElement('style');
       style.id = 'zeta-piece-display-css';
       style.textContent = `
-        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:4px;
-          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:2px 4px;border-radius:8px;transform:translateY(-50%);
+        #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:5px;
+          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:0 4px;border-radius:8px;transform:translateY(calc(-50% + 1px));
           pointer-events:none!important;white-space:nowrap;background:transparent;color:#f3f1f5;
           font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
-        #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;}
-        #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1.05;}
-        #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#ae94ff;white-space:nowrap;letter-spacing:-.35px;}
+        #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
+        #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;justify-content:center;line-height:1;height:23px;}
+        #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#ffffff;white-space:nowrap;letter-spacing:-.15px;line-height:1;padding-top:1px;}
       `;
       (document.head || document.documentElement).appendChild(style);
     }
@@ -292,15 +292,15 @@
     if (model) {
       const r = model.getBoundingClientRect();
       width = Math.min(130, Math.max(65, r.left - 50));
-      left = Math.max(43, r.left - width - 5);
-      centerY = r.top + r.height / 2;
+      left = Math.max(43, r.left - width - 6);
+      centerY = r.top + r.height / 2 + 0.5;
     } else {
       const menu = Array.from(document.querySelectorAll('header button,nav button,[aria-label="메뉴"],[aria-label="Menu"]'))
         .find(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < 150 && r.right > innerWidth - 85; });
       if (menu) {
         const r = menu.getBoundingClientRect();
         left = Math.max(43, r.left - width - 94);
-        centerY = r.top + r.height / 2;
+        centerY = r.top + r.height / 2 + 0.5;
       }
     }
     // The widget is aligned to the real button's vertical midpoint, not an
