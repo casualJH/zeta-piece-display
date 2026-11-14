@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.11
-// @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
+// @version      0.2.0
+// @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
 // @downloadURL  https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_11';
+  const GUARD = '__zetaPieceDisplay_0_2_0';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -32,6 +32,35 @@
   ]);
   // 사용자 제공 제타 피스 아이콘. 외부 이미지 다운로드 없음.
   const COIN_IMAGE = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAEgAAABICAMAAABiM0N1AAAAYFBMVEVHcEwxGHo/N06NZ9Slhea5nO6Aa6FnUZNoR6bmwf6xkN/Ane52VdVCJKxML7sTCD+BWddsXcVYO8ZsU9NiRc4iDl5qStJEJ5JYParLqfvX0fb29P5cTLrp4/t7R71jMLkAH8mOAAAADHRSTlMA/gf++/0vesr0dqvpoDpLAAAED0lEQVR42u3X3XKsKhAFYBHUmQmiIAj+4fu/5elm2jGzK2ol52ZX7Swrt1+tbiyHZL/5i5KX1e0WQuC3qvyxkWXlzbvGOccgfuWPPMt/wlShAQUZ7wMGqOz7KXVitj5hnmettSi/VQpGEMjAH/O1Wte19mAh1Vbfch5YBxRle4yUsm2j91CJa72XunQ+GDANMxaDUJJ49BYlVZF06RQNhCljQKJCAGH8DNLsbyhdOwIdbzDk7NKM0wVG0rXjalCoEO2IogNWciB9w3mbbKPCjJVcdbnn5ChFzg5ReIDhomcsP6/0YMlJ0HZkeyO+rQkq3S5f5wadvZGx1IjCE+SYy68WxBDazszIUUhjEdqsCFJ0rqnOBiNng6wSE2YQfU99AAxac+bcSaU8wIKY2hpZY8dpgaAl9nMjqCkPoY9UqCbIKjmCgBBQxBCk/dlspYdCO6SGQZm2AAw79QjJDZojcw07L0SQMuPU2t4a0wloNOK+iQIoxOgBOtlQcjDtNC54/F3Xc4B4R+/SBoHk8rMj26RlHEcoBpAppkn25FAjz7DTAcTThsixCC1D0QG0DKaTGLIQcs6H8DVUslSIJI7QOAnb2U4o+4mRCOHpO5+fTEZQXUxQaLSmM3JZxkLK1ClBPUFNkx9OVhME4cUoVHq1U7MuMQmzQc8OIZcfnRnbIaMUOt0IDkCSKrXwzLMO4MDz9YrcG1R3U4KgGMbKjZK0a1zEl1CF3w8KOGJaOmMhxk7jNNgXQytqINXRrt0LqotlHFWCLMfXugOGLJhsdifQ7Q0aIaJTYJliEqZD6H0yoPIDyLEXNC8owbFzq0YJDgQbwWNnrZ+FXPY15Jyvt/CRskAdiwo+KeB4muwIYmGtFT4KoIWgVnV9RwGKCqXJygOIebGu245qw4txWUZj+j5BMj3dp0IsO4LCna/U6ZmWK0tfkq2S1a9C1SG03gesRBD9HpFEnXooxAA6WjWm8vG+SJB2Z4coOFgg6OSDvYoJZwMpUUaRhE6/OZox5jDZUfI18EFgoz8rvS3IM8j5r+PNxyjWem+EocleTvA+QezkVlP6EOLnU9uh3Yn+KZXZSYL3IUIjkxqZHXo5M48BO11cjirmveao1O/3EXR0cmSMa/AXF788iz54DpL5E5K9xgjOgQp+zcE5S1nHGiRQ3iBidCFQimEts6s8pA5eR6q03WotIFzzASABEDrXF/Vi9ox5jxAykHlOjhiGogBKSrr3X0mi9gwpTK1CmKnOfRiQ4pycS+nRekoABRiECmQwoticaym/kYPQkyEFG+W7c01VSXkWagUylPvjgDkulZa0Ri6GT8z9oM5pqeAj59SGmPKH/89yhIriqSwfiPwwZfUh7piPR5n93+R5nv3mN/9y/gMoVJOohrkBegAAAABJRU5ErkJggg==';
+
+  const PREF_KEY = 'zeta-piece-display-preferences';
+  const DEFAULTS = Object.freeze({showIcon: true, font: 'system', fontSize: 15,
+    spacing: -0.5, color: '#FFFFFF', iconSize: 23, iconGap: 2, modelGap: 12, offsetY: 0});
+  const FONT_STACKS = {
+    system: '-apple-system,BlinkMacSystemFont,system-ui,sans-serif',
+    gothic: 'Arial,Helvetica,sans-serif',
+    serif: 'Georgia,serif',
+    mono: 'ui-monospace,SFMono-Regular,Menlo,monospace'
+  };
+  const PREF_RANGES = {fontSize:[10,24],spacing:[-2,3],iconSize:[16,32],
+    iconGap:[0,12],modelGap:[0,24],offsetY:[-10,10]};
+  function readPrefs() {
+    const out = {...DEFAULTS};
+    try {
+      const raw = JSON.parse(localStorage.getItem(PREF_KEY) || '{}');
+      if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return out;
+      if (typeof raw.showIcon === 'boolean') out.showIcon = raw.showIcon;
+      if (Object.prototype.hasOwnProperty.call(FONT_STACKS, raw.font)) out.font = raw.font;
+      if (typeof raw.color === 'string' && /^#[\da-f]{6}$/i.test(raw.color)) out.color = raw.color.toUpperCase();
+      for (const [key, range] of Object.entries(PREF_RANGES)) {
+        if (typeof raw[key] === 'number' && Number.isFinite(raw[key]))
+          out[key] = Math.max(range[0], Math.min(range[1], raw[key]));
+      }
+    } catch (_) {}
+    return out;
+  }
+  const prefs = readPrefs();
+  let settingsPanel = null;
 
   const auth = Object.create(null);
   let currentBalance = null;
@@ -227,13 +256,33 @@
           z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:2px;
           box-sizing:border-box;width:max-content;max-width:136px;height:36px;
           padding:0;margin:0;border:0;background:transparent!important;
-          pointer-events:none!important;white-space:nowrap;overflow:visible;
+          pointer-events:auto!important;cursor:pointer;user-select:none;-webkit-user-select:none;white-space:nowrap;overflow:visible;
           color:#fff;font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;
           font-variant-numeric:tabular-nums;line-height:1;
         }
         #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
         #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1;height:23px;}
         #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.5px;line-height:1;}
+        #zeta-piece-display:focus-visible {outline:2px solid #ad91fa;outline-offset:2px;}
+        #zeta-piece-display-settings {position:fixed;z-index:2147483600;width:min(300px,calc(100vw - 20px));
+          max-height:min(70vh,520px);overflow-y:auto;overscroll-behavior:contain;border:1px solid #50505b;
+          border-radius:14px;padding:14px;box-sizing:border-box;background:#24242d;color:#fff;
+          box-shadow:0 8px 30px rgba(0,0,0,.55);font:13px/1.5 system-ui,sans-serif;}
+        #zeta-piece-display-settings * {box-sizing:border-box;}
+        #zeta-piece-display-settings .zp-row {display:flex;justify-content:space-between;align-items:center;gap:10px;margin:9px 0;}
+        #zeta-piece-display-settings .zp-row label {flex:1;min-width:90px;}
+        #zeta-piece-display-settings .zp-row input[type=range] {width:95px;min-width:75px;accent-color:#ab91ff;}
+        #zeta-piece-display-settings .zp-row input[type=checkbox] {width:18px;height:18px;accent-color:#ab91ff;}
+        #zeta-piece-display-settings .zp-value {width:40px;text-align:right;color:#ccc;font-variant-numeric:tabular-nums;}
+        #zeta-piece-display-settings input[type=text],#zeta-piece-display-settings select {
+          color:#fff;background:#363640;border:1px solid #62626d;border-radius:7px;padding:6px;}
+        #zeta-piece-display-settings input[type=text] {width:108px;font:13px ui-monospace,monospace;}
+        #zeta-piece-display-settings select {width:150px;}
+        #zeta-piece-display-settings button {color:white;background:#3d3d49;border:1px solid #5b5b66;border-radius:7px;
+          padding:5px 10px;font:inherit;cursor:pointer;}
+        #zeta-piece-display-settings .zp-error {border-color:#ff6565!important;}
+        #zeta-piece-display-settings .zp-heading {font-size:15px;font-weight:700;margin-bottom:12px;}
+        #zeta-piece-display-settings .zp-hint {color:#bbb;font-size:11px;}
       `;
       (document.head || document.documentElement).appendChild(style);
     }
@@ -246,33 +295,131 @@
     // Keep the widget hidden until its anchor is measured.
     widget.style.display = 'none';
     document.body.appendChild(widget);
+    widget.tabIndex = 0;
+    widget.setAttribute('role','button');
+    widget.addEventListener('click', e => { e.stopPropagation(); toggleSettings(); });
+    widget.addEventListener('keydown', e => {
+      if (e.key === 'Enter' || e.key === ' ') {e.preventDefault();toggleSettings();}
+    });
+    applyAppearance();
     fitBalanceText();
     setStatus(lastStatus);
   }
 
+  function savePrefs() {
+    try {localStorage.setItem(PREF_KEY, JSON.stringify(prefs));} catch (_) {}
+  }
+
   function fitBalanceText() {
-    if (!valueNode || !widget) return;
-    const chars = (valueNode.textContent || '').length;
-    // 4-digit balances (e.g. 1,000 or 9,999) keep the same 15px font.
-    const base = chars > 9 ? 11 : chars > 7 ? 12 : chars > 5 ? 13 : 15;
-    valueNode.style.fontSize = base + 'px';
-    if (chars <= 5) return;
-    const available = Math.max(20, (widget.clientWidth || 94) - 35);
-    if (valueNode.scrollWidth > available) {
-      valueNode.style.fontSize = Math.max(9, Math.floor(base * available / valueNode.scrollWidth)) + 'px';
+    if (valueNode) valueNode.style.fontSize = prefs.fontSize + 'px';
+  }
+
+  function applyAppearance() {
+    if (!widget || !valueNode) return;
+    const icon = widget.querySelector('img');
+    if (icon) {
+      icon.style.display = prefs.showIcon ? 'block' : 'none';
+      icon.style.width = prefs.iconSize + 'px';
+      icon.style.height = prefs.iconSize + 'px';
+    }
+    widget.style.gap = prefs.showIcon ? prefs.iconGap + 'px' : '0px';
+    valueNode.style.fontFamily = FONT_STACKS[prefs.font];
+    valueNode.style.letterSpacing = prefs.spacing + 'px';
+    valueNode.style.color = prefs.color;
+    fitBalanceText();
+  }
+
+  function closeSettings() {
+    if (settingsPanel) {settingsPanel.remove(); settingsPanel = null;}
+  }
+
+  function updatePref(key, value) {
+    prefs[key] = value;
+    savePrefs();
+    applyAppearance();
+    if (key === 'modelGap' || key === 'offsetY') {
+      placementReady = false;
+      positionWidget(true);
+    }
+    if (settingsPanel) {
+      const output = settingsPanel.querySelector('[data-output="' + key + '"]');
+      if (output) output.textContent = String(value) + 'px';
     }
   }
 
-  // The model selector is an image button; textContent is empty.
-  // Use Zeta's stable test id, and verify that it belongs to this chat header.
+  function syncSettings() {
+    if (!settingsPanel) return;
+    for (const field of settingsPanel.querySelectorAll('[data-pref]')) {
+      const key = field.dataset.pref;
+      if (field.type === 'checkbox') field.checked = prefs[key];
+      else field.value = prefs[key];
+      field.classList.remove('zp-error');
+      const output = settingsPanel.querySelector('[data-output="' + key + '"]');
+      if (output) output.textContent = String(prefs[key]) + 'px';
+    }
+  }
+
+  function toggleSettings() {
+    if (settingsPanel) {closeSettings(); return;}
+    if (!widget || widget.style.display === 'none') return;
+    const panel = document.createElement('section');
+    panel.id = 'zeta-piece-display-settings';
+    panel.setAttribute('role', 'dialog');
+    panel.setAttribute('aria-label', '피스 표시 설정');
+    panel.innerHTML = `
+      <div class="zp-row zp-heading"><span>피스 표시 설정</span><button type="button" data-action="close">✕</button></div>
+      <div class="zp-row"><label for="zp-icon">아이콘 표시</label><input id="zp-icon" data-pref="showIcon" type="checkbox"></div>
+      <div class="zp-row"><label for="zp-font">글씨체</label><select id="zp-font" data-pref="font">
+        <option value="system">기본 고딕</option><option value="gothic">일반 고딕</option>
+        <option value="serif">명조</option><option value="mono">고정폭</option></select></div>
+      <div class="zp-row"><label for="zp-size">글씨 크기</label><input id="zp-size" type="range" data-pref="fontSize" min="10" max="24" step="1"><span class="zp-value" data-output="fontSize"></span></div>
+      <div class="zp-row"><label for="zp-spacing">자간</label><input id="zp-spacing" type="range" data-pref="spacing" min="-2" max="3" step="0.1"><span class="zp-value" data-output="spacing"></span></div>
+      <div class="zp-row"><label for="zp-color">글씨 색상</label><input id="zp-color" type="text" maxlength="7" placeholder="#FFFFFF" data-pref="color" autocapitalize="characters" spellcheck="false"></div>
+      <div class="zp-hint">색상은 #FFFFFF 형식으로 입력</div>
+      <div class="zp-row"><label for="zp-icon-size">아이콘 크기</label><input id="zp-icon-size" type="range" data-pref="iconSize" min="16" max="32" step="1"><span class="zp-value" data-output="iconSize"></span></div>
+      <div class="zp-row"><label for="zp-icon-gap">아이콘·숫자 간격</label><input id="zp-icon-gap" type="range" data-pref="iconGap" min="0" max="12" step="1"><span class="zp-value" data-output="iconGap"></span></div>
+      <div class="zp-row"><label for="zp-model-gap">모델 버튼 간격</label><input id="zp-model-gap" type="range" data-pref="modelGap" min="0" max="24" step="1"><span class="zp-value" data-output="modelGap"></span></div>
+      <div class="zp-row"><label for="zp-offset">세로 위치</label><input id="zp-offset" type="range" data-pref="offsetY" min="-10" max="10" step="1"><span class="zp-value" data-output="offsetY"></span></div>
+      <div class="zp-row" style="justify-content:flex-end;margin-top:14px"><button type="button" data-action="reset">기본값 복원</button></div>`;
+    panel.addEventListener('click', e => e.stopPropagation());
+    panel.querySelector('[data-action="close"]').addEventListener('click', closeSettings);
+    panel.querySelector('[data-action="reset"]').addEventListener('click', () => {
+      Object.assign(prefs, DEFAULTS);
+      savePrefs(); applyAppearance();
+      placementReady = false; positionWidget(true);
+      syncSettings();
+    });
+    for (const field of panel.querySelectorAll('[data-pref]')) {
+      const key = field.dataset.pref;
+      field.addEventListener('input', () => {
+        if (key === 'color') {
+          const value = field.value.trim();
+          const valid = /^#[0-9a-f]{6}$/i.test(value);
+          field.classList.toggle('zp-error', !valid);
+          if (valid) updatePref(key, value.toUpperCase());
+        } else if (field.type === 'checkbox') updatePref(key, field.checked);
+        else if (key === 'font') updatePref(key, field.value);
+        else updatePref(key, Number(field.value));
+      });
+    }
+    document.body.appendChild(panel);
+    settingsPanel = panel;
+    syncSettings();
+    const rect = widget.getBoundingClientRect();
+    const pw = panel.offsetWidth, ph = panel.offsetHeight;
+    panel.style.left = Math.round(Math.max(10, Math.min(window.innerWidth-pw-10, rect.right-pw))) + 'px';
+    panel.style.top = Math.round(rect.bottom+ph+8 < window.innerHeight
+      ? rect.bottom+8 : Math.max(10,rect.top-ph-8)) + 'px';
+  }
+
+  // The model selector contains a logo image, not text. Locate its stable test id.
   function findModelButton() {
     const header = document.querySelector('header[data-sentry-component="Header"]')
       || document.querySelector('header:has([data-testid="chat-header-model"])');
     const button = header?.querySelector('button[data-testid="chat-header-model"]')
       || document.querySelector('button[data-testid="chat-header-model"]');
     if (!header || !button || !header.contains(button)) return null;
-    const hr = header.getBoundingClientRect();
-    const br = button.getBoundingClientRect();
+    const hr = header.getBoundingClientRect(), br = button.getBoundingClientRect();
     if (hr.width < 120 || hr.height < 25 || br.width < 30 || br.height < 20
       || br.left < hr.left || br.right > hr.right + 2
       || br.top < hr.top - 2 || br.bottom > hr.bottom + 2) return null;
@@ -280,8 +427,8 @@
     return button;
   }
 
-  // Measure the genuine button once. Right anchoring preserves a 12px gap
-  // even when the balance grows from three digits to four or more.
+  // Measure ONCE, then keep fixed right/top coordinates. A changing number,
+  // periodic balance request, scroll or input focus never repositions this.
   function positionWidget(force = false) {
     if (!document.body) return;
     if (!isRoom()) {
@@ -291,19 +438,20 @@
     ensureWidget();
     if (!widget) return;
     if (placementReady && !force) {
-      widget.style.display = 'flex';
+      if (widget.style.display !== 'flex') widget.style.display = 'flex';
       return;
     }
-    const button = findModelButton();
-    if (!button) {
+    const model = findModelButton();
+    if (!model) {
+      // No guessed position: wait until the actual model button exists.
       widget.style.display = 'none';
       return;
     }
-    const r = button.getBoundingClientRect();
-    const gap = 12;
-    const viewportWidth = document.documentElement.clientWidth || window.innerWidth;
-    widget.style.right = `${Math.round(viewportWidth - r.left + gap)}px`;
-    widget.style.top = `${Math.round(r.top + r.height / 2)}px`;
+    const r = model.getBoundingClientRect();
+    const gap = prefs.modelGap;
+    // Fixed right edge means longer balances expand LEFT, keeping the gap.
+    widget.style.right = `${Math.round((document.documentElement.clientWidth || innerWidth) - r.left + gap)}px`;
+    widget.style.top = `${Math.round(r.top + r.height / 2 + prefs.offsetY)}px`;
     widget.style.display = 'flex';
     placementReady = true;
     attachAttempts = 0;
@@ -318,15 +466,17 @@
     }
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
+      closeSettings();
     } else if (isVisible() && (!placementReady || !widget?.isConnected)) {
       positionWidget();
     } else if (isVisible() && widget && widget.style.display === 'none') {
       widget.style.display = 'flex';
     }
     if (uiTimer) clearTimeout(uiTimer);
+    // No DOM observer and no repeated position calculation after placement.
     if (!placementReady && isRoom()) attachAttempts++;
     uiTimer = setTimeout(watchUi, !placementReady && isRoom() ?
-      (attachAttempts < 15 ? 600 : 3000) : 5000);
+      (attachAttempts < 12 ? 1000 : 4000) : 5000);
   }
 
   function onResize() {
@@ -353,6 +503,10 @@
     if (!document.body) return;
     positionWidget();
     watchUi();
+    document.addEventListener('click', e => {
+      if (settingsPanel && !settingsPanel.contains(e.target) && !widget?.contains(e.target)) closeSettings();
+    }, {passive:true});
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeSettings(); });
     document.addEventListener('visibilitychange', onVisibility, {passive: true});
     window.addEventListener('pageshow', onVisibility, {passive: true});
     window.addEventListener('resize', onResize, {passive: true});
