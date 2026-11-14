@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.9.0
+// @version      0.9.1
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -338,6 +338,13 @@
         #zeta-piece-display .zpd-copy {display:flex;min-width:0;align-items:center;line-height:1;height:23px;}
         #zeta-piece-display .zpd-value {display:block;font-size:15px;font-weight:700;color:#fff;letter-spacing:-.5px;line-height:1;}
         #zeta-piece-display:focus-visible {outline:2px solid #ad91fa;outline-offset:2px;}
+        /* Phone Peek is a portal dialog layered above the chat room.
+           Hide only our widget and its popup while this panel exists;
+           CSS restores them immediately when the panel is unmounted. */
+        body:has([data-testid="phone-peek-panel"]) #zeta-piece-display,
+        body:has([data-testid="phone-peek-panel"]) #zeta-piece-display-settings {
+          display:none!important;
+        }
         #zeta-piece-display-settings {position:fixed;z-index:2147483600;width:min(300px,calc(100vw - 20px));
           max-height:min(70vh,520px);overflow-y:auto;overscroll-behavior:contain;border:1px solid #50505b;
           border-radius:14px;padding:14px;box-sizing:border-box;background:#24242d;color:#fff;
