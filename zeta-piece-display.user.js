@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.5
+// @version      0.1.6
 // @description  채팅 상단 피스 잔액 표시, 30초마다 자동 갱신 (정렬/가독성 보정).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_5';
+  const GUARD = '__zetaPieceDisplay_0_1_6';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -46,6 +46,7 @@
   let modelButton = null;
   let lastPosition = '';
   let placementLocked = false;
+  let hasModelAnchor = false;
   let viewportWidth = window.innerWidth;
   let pollTimer = 0;
   let uiTimer = 0;
@@ -221,7 +222,7 @@
       style.id = 'zeta-piece-display-css';
       style.textContent = `
         #zeta-piece-display {position:fixed!important;z-index:1100!important;display:flex;align-items:center;justify-content:flex-end;gap:5px;
-          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:0 4px;border-radius:8px;transform:translateY(calc(-50% + 1px));
+          box-sizing:border-box;min-width:0;max-width:136px;height:36px;padding:0 4px;border-radius:8px;transform:translateY(-50%);
           pointer-events:none!important;white-space:nowrap;background:transparent;color:#f3f1f5;
           font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
         #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;display:block;}
@@ -273,11 +274,14 @@
     return best;
   }
 
+  // A successfully identified zeta button is the one and only placement anchor.
+  // Temporary missing buttons or iOS Safari viewport jitter must not move the widget.
   function positionWidget(force = false) {
     if (!document.body) return;
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
       placementLocked = false;
+      hasModelAnchor = false;
       return;
     }
     ensureWidget();
@@ -286,26 +290,44 @@
       if (widget.style.display === 'none') widget.style.display = 'flex';
       return;
     }
+
     const model = findModelButton();
-    // Keep the working v0.1.0 fallback visible until the model is found.
-    let centerY = 29, left = Math.max(44, innerWidth - 210), width = 94;
     if (model) {
       const r = model.getBoundingClientRect();
-      width = Math.min(130, Math.max(65, r.left - 50));
-      left = Math.max(43, r.left - width - 6);
-      centerY = r.top + r.height / 2 + 0.5;
-    } else {
-      const menu = Array.from(document.querySelectorAll('header button,nav button,[aria-label="메뉴"],[aria-label="Menu"]'))
-        .find(el => { const r = el.getBoundingClientRect(); return r.top >= 0 && r.top < 150 && r.right > innerWidth - 85; });
-      if (menu) {
-        const r = menu.getBoundingClientRect();
-        left = Math.max(43, r.left - width - 94);
-        centerY = r.top + r.height / 2 + 0.5;
+      // Only accept a visible, plausible model button near the right side of the header.
+      if (r.width >= 35 && r.height >= 16 && r.top >= 0 && r.top <= 150 &&
+          r.left > innerWidth * .45 && r.right <= innerWidth + 2) {
+        const width = Math.min(130, Math.max(65, r.left - 50));
+        const left = Math.max(43, r.left - width - 6);
+        // -3.5px visually aligns the coin artwork and text with the 'zeta' label.
+        const centerY = r.top + r.height / 2 - 3.5;
+        const id = `${Math.round(left)},${Math.round(centerY)},${Math.round(width)}`;
+        if (id !== lastPosition || widget.style.display === 'none') {
+          widget.style.left = `${left}px`;
+          widget.style.top = `${centerY}px`;
+          widget.style.width = `${width}px`;
+          widget.style.display = 'flex';
+          lastPosition = id;
+          fitBalanceText();
+        }
+        hasModelAnchor = true;
+        placementLocked = true;
+        return;
       }
     }
-    // The widget is aligned to the real button's vertical midpoint, not an
-    // estimated top offset. Right-aligned content stays beside the button.
-    const id = `${Math.round(left)},${Math.round(centerY)},${Math.round(width)}`;
+
+    if (hasModelAnchor) {
+      // The last verified model-relative coordinates remain unchanged.
+      widget.style.display = 'flex';
+      placementLocked = true;
+      return;
+    }
+    // Original v0.1.0-style fallback is used only until the real button appears.
+    // Never switch among temporary header/menu targets.
+    const left = Math.max(43, innerWidth - 210);
+    const centerY = 29;
+    const width = 94;
+    const id = `${Math.round(left)},${centerY},${width}`;
     if (id !== lastPosition || widget.style.display === 'none') {
       widget.style.left = `${left}px`;
       widget.style.top = `${centerY}px`;
@@ -314,8 +336,7 @@
       lastPosition = id;
       fitBalanceText();
     }
-    // If only fallback was found, retry later instead of freezing the wrong location.
-    placementLocked = !!model;
+    placementLocked = false;
   }
 
   function watchUi() {
@@ -325,6 +346,7 @@
       modelButton = null;
       lastPosition = '';
       placementLocked = false;
+      hasModelAnchor = false;
       if (isRoom() && isVisible()) schedulePoll(200);
     }
     if (isVisible()) positionWidget();
@@ -333,7 +355,9 @@
   }
 
   function onResize() {
-    if (Math.abs(window.innerWidth - viewportWidth) < 3) return;
+    // Mobile Safari fires resize for address/toolbars and tiny visual viewport changes.
+    // Re-anchor only for an actual large layout change (e.g., rotation).
+    if (Math.abs(window.innerWidth - viewportWidth) < 80) return;
     viewportWidth = window.innerWidth;
     placementLocked = false;
     modelButton = null;
