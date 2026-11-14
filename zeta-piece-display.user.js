@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      0.1.1
+// @version      0.1.2
 // @description  채팅 상단에 실제 피스 잔액을 표시합니다. 30초 간격으로 가볍게 자동 갱신합니다.
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
@@ -16,7 +16,7 @@
 
 (function () {
   'use strict';
-  const GUARD = '__zetaPieceDisplay_0_1_1';
+  const GUARD = '__zetaPieceDisplay_0_1_2';
   if (window[GUARD]) return;
   window[GUARD] = true;
 
@@ -213,6 +213,49 @@
     }, delay);
   }
 
+  // Draw the supplied PNG on a canvas rather than loading a data: image URL.
+  // Some browser/site image policies can block data: <img> sources.
+  // A small vector fallback remains visible even if image decoding fails.
+  function drawCoin(canvas) {
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+    ctx.save();
+    ctx.translate(36, 36);
+    ctx.rotate(-0.32);
+    ctx.scale(0.85, 1.04);
+    const shade = ctx.createLinearGradient(-20, -25, 23, 27);
+    shade.addColorStop(0, '#bca0ff');
+    shade.addColorStop(.3, '#7442e9');
+    shade.addColorStop(.7, '#4b23ad');
+    shade.addColorStop(1, '#301769');
+    ctx.fillStyle = '#291354';
+    ctx.beginPath(); ctx.ellipse(2, 3, 26, 30, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = shade;
+    ctx.beginPath(); ctx.ellipse(0, 0, 25, 29, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = '#d8c4ff'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.ellipse(-2, -2, 21, 25, 0, -2.7, -.4); ctx.stroke();
+    ctx.fillStyle = '#fff';
+    ctx.font = 'bold 33px sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText('↯', 0, 1);
+    ctx.restore();
+    // Decode the original, user-supplied image once. Never run in the poll loop.
+    try {
+      const binary = atob(COIN_IMAGE.slice(COIN_IMAGE.indexOf(',') + 1));
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      const blob = new Blob([bytes], {type: 'image/png'});
+      if (typeof createImageBitmap === 'function') {
+        createImageBitmap(blob).then(bitmap => {
+          if (!canvas.isConnected) {bitmap.close?.(); return;}
+          ctx.clearRect(0, 0, 72, 72);
+          ctx.drawImage(bitmap, 0, 0, 72, 72);
+          bitmap.close?.();
+        }).catch(() => {});
+      }
+    } catch (_) { /* keep visible fallback */ }
+  }
+
   function ensureWidget() {
     if (widget && widget.isConnected) return;
     if (!document.body) return;
@@ -225,7 +268,7 @@
           height:36px;padding:2px 3px;border-radius:8px;overflow:hidden;
           pointer-events:none!important;white-space:nowrap;background:transparent!important;color:#f3f1f5;
           font-family:-apple-system,BlinkMacSystemFont,system-ui,sans-serif;font-variant-numeric:tabular-nums;}
-        #zeta-piece-display img {width:23px;height:23px;object-fit:contain;flex:none;}
+        #zeta-piece-display .zpd-coin {display:block!important;width:23px!important;height:23px!important;min-width:23px!important;flex:none!important;opacity:1!important;visibility:visible!important;}
         #zeta-piece-display .zpd-copy {display:flex;align-items:center;min-width:0;line-height:1;}
         #zeta-piece-display .zpd-value {display:block;min-width:0;font-size:17px;font-weight:700;
           color:#ae94ff;letter-spacing:-.35px;white-space:nowrap;}
@@ -236,7 +279,8 @@
     }
     widget = document.createElement('div');
     widget.id = 'zeta-piece-display';
-    widget.innerHTML = `<img alt="" src="${COIN_IMAGE}"><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
+    widget.innerHTML = `<canvas class="zpd-coin" width="72" height="72" role="img" aria-label="피스"></canvas><span class="zpd-copy"><span class="zpd-value">—</span></span>`;
+    drawCoin(widget.querySelector('.zpd-coin'));
     valueNode = widget.querySelector('.zpd-value');
     if (currentBalance !== null) {
       valueNode.textContent = currentBalance.toLocaleString('ko-KR');
