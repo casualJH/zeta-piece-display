@@ -1,21 +1,36 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      1.1.0
+// @version      1.1.1
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
 // @downloadURL  https://raw.githubusercontent.com/casualJH/zeta-piece-display/main/zeta-piece-display.user.js
 // @match        https://zeta-ai.io/*
 // @match        https://*.zeta-ai.io/*
+// @match        https://frame.pingpong.ai/*
 // @run-at       document-start
-// @noframes
 // @sandbox      raw
 // @grant        none
 // ==/UserScript==
 
 (function () {
   'use strict';
+  const siteOrigin = 'https://zeta-ai.io';
+  const sceneOrigin = 'https://frame.pingpong.ai';
+  const sceneChannel = 'zeta-piece-display:model-position';
+  if (location.origin === sceneOrigin) {
+    if (window.parent === window || !/^\/v\d+\/index\.html$/.test(location.pathname)) return;
+    window.addEventListener('message', event => {
+      if (event.origin !== siteOrigin || event.source !== window.parent || event.data !== sceneChannel) return;
+      const button = document.querySelector('button[aria-label="Select AI model"], button[data-testid="chat-header-model"]');
+      const rect = button?.getBoundingClientRect();
+      const position = rect?.width && rect.height ? {left: rect.left, centerY: rect.top + rect.height / 2} : null;
+      window.parent.postMessage({channel: sceneChannel, position}, siteOrigin);
+    });
+    return;
+  }
+  if (window.top !== window) return;
   // Stable guard across releases; cooperate with previously installed versions.
   const GUARD = '__zetaPieceDisplayActive';
   const LEGACY_RE = /^__zetaPieceDisplay_0_[12]_\d+$/;
@@ -546,6 +561,37 @@
     return button;
   }
 
+  function findScene() {
+    return Array.from(document.querySelectorAll('iframe[title="scene"][src]')).find(frame => {
+      const url = new URL(frame.src);
+      return url.origin === sceneOrigin && /^\/v\d+\/index\.html$/.test(url.pathname);
+    });
+  }
+
+  let activeScene = null;
+  let scenePosition = null;
+  function syncScene() {
+    const frame = isRoom() ? findScene() : null;
+    if (activeScene !== frame) {
+      activeScene = frame;
+      scenePosition = null;
+      placementReady = false;
+    }
+    frame?.contentWindow?.postMessage(sceneChannel, sceneOrigin);
+  }
+
+  window.addEventListener('message', event => {
+    if (!activeScene || activeScene !== findScene() || !isRoom()
+      || event.origin !== sceneOrigin || event.source !== activeScene.contentWindow
+      || event.data?.channel !== sceneChannel) return;
+    const position = event.data.position;
+    const next = Number.isFinite(position?.left) && Number.isFinite(position?.centerY) ? position : null;
+    if (next?.left === scenePosition?.left && next?.centerY === scenePosition?.centerY) return;
+    scenePosition = next;
+    placementReady = false;
+    positionWidget();
+  });
+
   // Measure ONCE, then keep fixed right/top coordinates. A changing number,
   // periodic balance request, scroll or input focus never repositions this.
   function positionWidget(force = false) {
@@ -560,13 +606,18 @@
       if (widget.style.display !== 'flex') widget.style.display = 'flex';
       return;
     }
-    const model = findModelButton();
-    if (!model) {
+    const model = activeScene ? null : findModelButton();
+    const frameRect = activeScene?.getBoundingClientRect();
+    if (!model && !(frameRect?.width && scenePosition)) {
       // No guessed position: wait until the actual model button exists.
       widget.style.display = 'none';
       return;
     }
-    const r = model.getBoundingClientRect();
+    const r = model ? model.getBoundingClientRect() : {
+      left: frameRect.left + activeScene.clientLeft + scenePosition.left,
+      top: frameRect.top + activeScene.clientTop + scenePosition.centerY,
+      height: 0
+    };
     const gap = prefs.modelGap;
     // Fixed right edge means longer balances expand LEFT, keeping the gap.
     widget.style.right = `${Math.round((document.documentElement.clientWidth || innerWidth) - r.left + gap)}px`;
@@ -591,6 +642,7 @@
         if (isVisible()) schedulePoll(200);
       }
     }
+    syncScene();
     if (!isRoom()) {
       if (widget) widget.style.display = 'none';
       closeSettings();
@@ -612,6 +664,7 @@
     // Soft keyboard and browser toolbar height changes cannot reposition the piece.
     if (Math.abs(width - viewportWidth) < 3) return;
     viewportWidth = width;
+    syncScene();
     modelButton = null;
     placementReady = false;
     positionWidget(true);
