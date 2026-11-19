@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         제타 피스 표시
 // @namespace    zeta-piece-display
-// @version      1.1.1-beta.1
+// @version      1.1.1-beta.2
 // @description  채팅 상단 피스 표시 및 클릭 커스터마이징 (30초 자동 갱신).
 // @homepageURL  https://github.com/casualJH/zeta-piece-display
 // @updateURL    https://raw.githubusercontent.com/casualJH/zeta-piece-display/dev/zeta-piece-display.user.js
@@ -206,8 +206,9 @@
   function setStatus(message) {
     lastStatus = message;
     if (widget) {
-      widget.title = `내 피스: ${currentBalance === null ? '미확인' : currentBalance.toLocaleString('ko-KR')}\n${message}\n조회 간격: 30초`;
-      widget.setAttribute('aria-label', `내 피스 ${currentBalance === null ? '확인 중' : currentBalance.toLocaleString('ko-KR')}`);
+      // Stable accessible name: balance changes must not make Dock treat this as a new launcher.
+      widget.title = '제타 피스 표시';
+      widget.setAttribute('aria-label', '제타 피스 표시');
     }
   }
 
